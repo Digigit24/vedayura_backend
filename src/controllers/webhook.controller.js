@@ -101,7 +101,7 @@ const handleShiprocketWebhook = async (req, res) => {
     const mappedStatus = statusMap[current_status] || 'IN_TRANSIT';
 
     // Get current status history
-    const currentHistory = (shippingDetails.statusHistory as any[]) || [];
+    const currentHistory = shippingDetails.statusHistory || [];
 
     // Add new status update to history
     const updatedHistory = [
