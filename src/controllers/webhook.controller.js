@@ -1,5 +1,5 @@
-const { prisma } = require('../config/database');
-const crypto = require('crypto');
+const { prisma } = require("../config/database");
+const crypto = require("crypto");
 
 /**
  * Shiprocket Webhook Handler
@@ -33,22 +33,22 @@ const handleShiprocketWebhook = async (req, res) => {
 
     // Verify webhook signature if secret is configured
     if (process.env.SHIPROCKET_WEBHOOK_SECRET) {
-      const signature = req.headers['x-shiprocket-signature'];
+      const signature = req.headers["x-shiprocket-signature"];
       const expectedSignature = crypto
-        .createHmac('sha256', process.env.SHIPROCKET_WEBHOOK_SECRET)
+        .createHmac("sha256", process.env.SHIPROCKET_WEBHOOK_SECRET)
         .update(JSON.stringify(webhookData))
-        .digest('hex');
+        .digest("hex");
 
       if (signature !== expectedSignature) {
-        console.error('Invalid webhook signature');
+        console.error("Invalid webhook signature");
         return res.status(401).json({
           success: false,
-          message: 'Invalid signature'
+          message: "Invalid signature",
         });
       }
     }
 
-    console.log('Shiprocket Webhook Received:', webhookData);
+    console.log("Shiprocket Webhook Received:", webhookData);
 
     const {
       shipment_id,
@@ -58,7 +58,7 @@ const handleShiprocketWebhook = async (req, res) => {
       edd,
       pickup_date,
       delivered_date,
-      tracking_url
+      tracking_url,
     } = webhookData;
 
     // Find shipping details by shiprocket shipment ID or AWB code
@@ -66,42 +66,45 @@ const handleShiprocketWebhook = async (req, res) => {
       where: {
         OR: [
           { shiprocketShipmentId: shipment_id?.toString() },
-          { awbCode: awb_code }
-        ]
+          { awbCode: awb_code },
+        ],
       },
       include: {
-        order: true
-      }
+        order: true,
+      },
     });
 
     if (!shippingDetails) {
-      console.warn('Shipping details not found for webhook:', { shipment_id, awb_code });
+      console.warn("Shipping details not found for webhook:", {
+        shipment_id,
+        awb_code,
+      });
       return res.status(404).json({
         success: false,
-        message: 'Shipping details not found'
+        message: "Shipping details not found",
       });
     }
 
     // Map Shiprocket status to our ShipmentStatus enum
     const statusMap = {
-      'New': 'PENDING',
-      'Pickup Scheduled': 'PROCESSING',
-      'Picked Up': 'DISPATCHED',
-      'Shipped': 'DISPATCHED',
-      'In Transit': 'IN_TRANSIT',
-      'Out For Delivery': 'OUT_FOR_DELIVERY',
-      'Delivered': 'DELIVERED',
-      'Cancelled': 'CANCELLED',
-      'RTO Initiated': 'RTO_INITIATED',
-      'RTO Delivered': 'RTO_DELIVERED',
-      'Lost': 'FAILED',
-      'Damaged': 'FAILED'
+      New: "PENDING",
+      "Pickup Scheduled": "PROCESSING",
+      "Picked Up": "DISPATCHED",
+      Shipped: "DISPATCHED",
+      "In Transit": "IN_TRANSIT",
+      "Out For Delivery": "OUT_FOR_DELIVERY",
+      Delivered: "DELIVERED",
+      Cancelled: "CANCELLED",
+      "RTO Initiated": "RTO_INITIATED",
+      "RTO Delivered": "RTO_DELIVERED",
+      Lost: "FAILED",
+      Damaged: "FAILED",
     };
 
-    const mappedStatus = statusMap[current_status] || 'IN_TRANSIT';
+    const mappedStatus = statusMap[current_status] || "IN_TRANSIT";
 
     // Get current status history
-    const currentHistory = (shippingDetails.statusHistory as any[]) || [];
+    const currentHistory = shippingDetails.statusHistory || [];
 
     // Add new status update to history
     const updatedHistory = [
@@ -110,8 +113,8 @@ const handleShiprocketWebhook = async (req, res) => {
         status: current_status,
         timestamp: new Date().toISOString(),
         courierName: courier_name,
-        awbCode: awb_code
-      }
+        awbCode: awb_code,
+      },
     ];
 
     // Update shipping details
@@ -120,7 +123,7 @@ const handleShiprocketWebhook = async (req, res) => {
       courierName: courier_name || shippingDetails.courierName,
       awbCode: awb_code || shippingDetails.awbCode,
       trackingUrl: tracking_url || shippingDetails.trackingUrl,
-      statusHistory: updatedHistory
+      statusHistory: updatedHistory,
     };
 
     if (edd) {
@@ -131,27 +134,32 @@ const handleShiprocketWebhook = async (req, res) => {
       updateData.pickupScheduledDate = new Date(pickup_date);
     }
 
-    if (current_status.includes('Picked') || current_status.includes('Dispatch')) {
+    if (
+      current_status.includes("Picked") ||
+      current_status.includes("Dispatch")
+    ) {
       updateData.dispatchedDate = new Date();
     }
 
-    if (delivered_date || current_status === 'Delivered') {
-      updateData.deliveredDate = delivered_date ? new Date(delivered_date) : new Date();
+    if (delivered_date || current_status === "Delivered") {
+      updateData.deliveredDate = delivered_date
+        ? new Date(delivered_date)
+        : new Date();
     }
 
     await prisma.shippingDetails.update({
       where: { id: shippingDetails.id },
-      data: updateData
+      data: updateData,
     });
 
     // Update order status based on shipment status
     const orderStatusMap = {
-      'PROCESSING': 'PAID',
-      'DISPATCHED': 'SHIPPED',
-      'IN_TRANSIT': 'SHIPPED',
-      'OUT_FOR_DELIVERY': 'SHIPPED',
-      'DELIVERED': 'DELIVERED',
-      'CANCELLED': 'CANCELLED'
+      PROCESSING: "PAID",
+      DISPATCHED: "SHIPPED",
+      IN_TRANSIT: "SHIPPED",
+      OUT_FOR_DELIVERY: "SHIPPED",
+      DELIVERED: "DELIVERED",
+      CANCELLED: "CANCELLED",
     };
 
     const newOrderStatus = orderStatusMap[mappedStatus];
@@ -160,26 +168,27 @@ const handleShiprocketWebhook = async (req, res) => {
         where: { id: shippingDetails.orderId },
         data: {
           status: newOrderStatus,
-          ...(newOrderStatus === 'DELIVERED' && {
-            deliveryTrackingId: awb_code
-          })
-        }
+          ...(newOrderStatus === "DELIVERED" && {
+            deliveryTrackingId: awb_code,
+          }),
+        },
       });
     }
 
-    console.log(`Webhook processed: Order ${shippingDetails.orderId} -> ${mappedStatus}`);
+    console.log(
+      `Webhook processed: Order ${shippingDetails.orderId} -> ${mappedStatus}`,
+    );
 
     return res.status(200).json({
       success: true,
-      message: 'Webhook processed successfully'
+      message: "Webhook processed successfully",
     });
-
   } catch (error) {
-    console.error('Webhook Handler Error:', error);
+    console.error("Webhook Handler Error:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to process webhook',
-      error: error.message
+      message: "Failed to process webhook",
+      error: error.message,
     });
   }
 };
@@ -193,38 +202,38 @@ const handleShiprocketWebhook = async (req, res) => {
 const handleRazorpayWebhook = async (req, res) => {
   try {
     const webhookData = req.body;
-    const webhookSignature = req.headers['x-razorpay-signature'];
+    const webhookSignature = req.headers["x-razorpay-signature"];
 
     // Verify webhook signature
     const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_WEBHOOK_SECRET || '')
+      .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET || "")
       .update(JSON.stringify(webhookData))
-      .digest('hex');
+      .digest("hex");
 
     if (webhookSignature !== expectedSignature) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid signature'
+        message: "Invalid signature",
       });
     }
 
-    console.log('Razorpay Webhook:', webhookData.event);
+    console.log("Razorpay Webhook:", webhookData.event);
 
     const { event, payload } = webhookData;
 
     // Handle different events
     switch (event) {
-      case 'payment.captured':
+      case "payment.captured":
         // Payment successful
-        console.log('Payment captured:', payload.payment.entity.id);
+        console.log("Payment captured:", payload.payment.entity.id);
         break;
 
-      case 'payment.failed':
+      case "payment.failed":
         // Payment failed
-        console.log('Payment failed:', payload.payment.entity.id);
+        console.log("Payment failed:", payload.payment.entity.id);
         break;
 
-      case 'refund.created':
+      case "refund.created":
         // Refund initiated
         const refundId = payload.refund.entity.id;
         const paymentId = payload.refund.entity.payment_id;
@@ -232,47 +241,46 @@ const handleRazorpayWebhook = async (req, res) => {
         // Update refund status in database
         await prisma.refund.updateMany({
           where: {
-            razorpayRefundId: refundId
+            razorpayRefundId: refundId,
           },
           data: {
-            status: 'PROCESSING'
-          }
+            status: "PROCESSING",
+          },
         });
         break;
 
-      case 'refund.processed':
+      case "refund.processed":
         // Refund completed
         await prisma.refund.updateMany({
           where: {
-            razorpayRefundId: payload.refund.entity.id
+            razorpayRefundId: payload.refund.entity.id,
           },
           data: {
-            status: 'COMPLETED',
-            completedAt: new Date()
-          }
+            status: "COMPLETED",
+            completedAt: new Date(),
+          },
         });
         break;
 
       default:
-        console.log('Unhandled event:', event);
+        console.log("Unhandled event:", event);
     }
 
     return res.status(200).json({
       success: true,
-      message: 'Webhook processed'
+      message: "Webhook processed",
     });
-
   } catch (error) {
-    console.error('Razorpay Webhook Error:', error);
+    console.error("Razorpay Webhook Error:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to process webhook',
-      error: error.message
+      message: "Failed to process webhook",
+      error: error.message,
     });
   }
 };
 
 module.exports = {
   handleShiprocketWebhook,
-  handleRazorpayWebhook
+  handleRazorpayWebhook,
 };
