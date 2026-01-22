@@ -51,6 +51,9 @@ app.use('/api/cart', require('./src/routes/cart.routes'));
 app.use('/api/wishlist', require('./src/routes/wishlist.routes'));
 app.use('/api/orders', require('./src/routes/order.routes'));
 app.use('/api/reviews', require('./src/routes/review.routes'));
+app.use('/api/shipping', require('./src/routes/shipping.routes'));
+app.use('/api/refunds', require('./src/routes/refund.routes'));
+app.use('/api/webhooks', require('./src/routes/webhook.routes'));
 app.use('/api/admin', require('./src/routes/admin.routes'));
 
 // 404 Handler

@@ -27,6 +27,31 @@ enum PaymentStatus {
   PENDING
   SUCCESS
   FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ShipmentStatus {
+  PENDING
+  PROCESSING
+  DISPATCHED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED
+  CANCELLED
+  RTO_INITIATED
+  RTO_DELIVERED
+}
+
+enum RefundStatus {
+  REQUESTED
+  PENDING_ADMIN_APPROVAL
+  APPROVED
+  REJECTED
+  PROCESSING
+  COMPLETED
+  FAILED
 }
 
 model User {
@@ -44,6 +69,7 @@ model User {
   reviews   Review[]
   cart      Cart?
   wishlist  Wishlist?
+  refunds   Refund[]
 
   @@map("users")
 }
@@ -155,16 +181,26 @@ model WishlistItem {
 model Order {
   id                       String      @id @default(uuid())
   userId                   String      @map("user_id")
+  subtotalAmount           Decimal     @map("subtotal_amount") @db.Decimal(10, 2)
+  shippingCost             Decimal     @map("shipping_cost") @db.Decimal(10, 2) @default(0)
   totalAmount              Decimal     @map("total_amount") @db.Decimal(10, 2)
   status                   OrderStatus @default(PENDING)
   deliveryTrackingId       String?     @map("delivery_tracking_id")
   shippingAddressSnapshot  Json        @map("shipping_address_snapshot")
+  pickupPincode            String?     @map("pickup_pincode")
+  deliveryPincode          String?     @map("delivery_pincode")
+  weightKg                 Decimal?    @map("weight_kg") @db.Decimal(5, 2)
+  lengthCm                 Decimal?    @map("length_cm") @db.Decimal(5, 2)
+  breadthCm                Decimal?    @map("breadth_cm") @db.Decimal(5, 2)
+  heightCm                 Decimal?    @map("height_cm") @db.Decimal(5, 2)
   createdAt                DateTime    @default(now())
   updatedAt                DateTime    @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id])
-  orderItems OrderItem[]
-  payment    Payment?
+  user            User             @relation(fields: [userId], references: [id])
+  orderItems      OrderItem[]
+  payment         Payment?
+  shippingDetails ShippingDetails?
+  refunds         Refund[]
 
   @@map("orders")
 }
@@ -186,10 +222,12 @@ model OrderItem {
 model Payment {
   id                  String        @id @default(uuid())
   orderId             String        @unique @map("order_id")
-  razorpayOrderId     String?       @map("razorpay_order_id")
-  razorpayPaymentId   String?       @map("razorpay_payment_id")
+  razorpayOrderId     String?       @unique @map("razorpay_order_id")
+  razorpayPaymentId   String?       @unique @map("razorpay_payment_id")
   razorpaySignature   String?       @map("razorpay_signature")
+  idempotencyKey      String?       @unique @map("idempotency_key")
   amount              Decimal       @db.Decimal(10, 2)
+  amountRefunded      Decimal       @default(0) @map("amount_refunded") @db.Decimal(10, 2)
   status              PaymentStatus @default(PENDING)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
@@ -213,4 +251,52 @@ model Review {
 
   @@unique([userId, productId])
   @@map("reviews")
+}
+
+model ShippingDetails {
+  id                    String         @id @default(uuid())
+  orderId               String         @unique @map("order_id")
+  shiprocketOrderId     String?        @map("shiprocket_order_id")
+  shiprocketShipmentId  String?        @map("shiprocket_shipment_id")
+  awbCode               String?        @map("awb_code")
+  courierName           String?        @map("courier_name")
+  courierPhone          String?        @map("courier_phone")
+  courierEmail          String?        @map("courier_email")
+  trackingUrl           String?        @map("tracking_url")
+  estimatedDeliveryDate DateTime?      @map("estimated_delivery_date")
+  currentStatus         ShipmentStatus @default(PENDING) @map("current_status")
+  statusHistory         Json?          @map("status_history")
+  pickupScheduledDate   DateTime?      @map("pickup_scheduled_date")
+  dispatchedDate        DateTime?      @map("dispatched_date")
+  deliveredDate         DateTime?      @map("delivered_date")
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("shipping_details")
+}
+
+model Refund {
+  id                  String       @id @default(uuid())
+  orderId             String       @map("order_id")
+  userId              String       @map("user_id")
+  razorpayRefundId    String?      @unique @map("razorpay_refund_id")
+  amount              Decimal      @db.Decimal(10, 2)
+  reason              String
+  userNote            String?      @map("user_note")
+  adminNote           String?      @map("admin_note")
+  status              RefundStatus @default(REQUESTED)
+  requestedAt         DateTime     @default(now()) @map("requested_at")
+  approvedRejectedAt  DateTime?    @map("approved_rejected_at")
+  processedAt         DateTime?    @map("processed_at")
+  completedAt         DateTime?    @map("completed_at")
+  approvedByAdminId   String?      @map("approved_by_admin_id")
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@map("refunds")
 }

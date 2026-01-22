@@ -6,8 +6,9 @@ const {
   verifyPayment,
   getUserOrders,
   getOrderById,
+  trackOrder,
   cancelOrder
-} = require('../controllers/order.controller');
+} = require('../controllers/order.enhanced.controller');
 
 // All order routes require authentication
 router.use(authenticate);
@@ -16,6 +17,7 @@ router.post('/checkout', createOrder);
 router.post('/verify-payment', verifyPayment);
 router.get('/', getUserOrders);
 router.get('/:id', getOrderById);
+router.get('/:id/track', trackOrder);
 router.put('/:id/cancel', cancelOrder);
 
 module.exports = router;
